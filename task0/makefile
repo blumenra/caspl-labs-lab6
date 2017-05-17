@@ -1,17 +1,14 @@
 
-all: main
+all: mypipe
 
-main: JobControl.o  main.o
-	gcc -g  -Wall JobControl.o  main.o  -o main
+mypipe: mypipe.o
+	gcc -g -m32 -Wall mypipe.o -o mypipe
 
-main.o: main.c  LineParser.h
-	gcc -g  -Wall -c main.c -o main.o
-
-JobControl.o: JobControl.c  JobControl.h
-	gcc -g  -Wall -c JobControl.c -o JobControl.o
+mypipe.o: mypipe.c
+	gcc -g -m32 -Wall -c mypipe.c -o mypipe.o
 
 .PHONY:
 	clean
 
 clean:
-	rm -f ./*.o  main
+	rm -f ./*.o mypipe
