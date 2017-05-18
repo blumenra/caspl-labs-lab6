@@ -203,7 +203,7 @@ void updateJobList(job **job_list, int remove_done_jobs){
 
 		job* nextJob = tmp->next;
 
-		ret = waitpid(tmp->pgid, &stat, WNOHANG);
+		ret = waitpid(-(tmp->pgid), &stat, WNOHANG);
 
 		if(ret > 0){
 			tmp->status = DONE;
@@ -234,11 +234,11 @@ void runJobInForeground (job** job_list, job *j, int cont, struct termios* shell
 	int stat;
 
 
-	ret = waitpid(j->pgid, &stat, WNOHANG);
+	ret = waitpid(-(j->pgid), &stat, WNOHANG);
 
 	if(ret == -1){
-
-		printf("[%d]\t %s \t\t %s", j->idx, statusToStr(j->status),j -> cmd); 
+		puts("1");
+		printf("[%d]\t %s \t\t %s", j->idx, "Done",j -> cmd); 
 
 		if (j -> cmd[strlen(j -> cmd)-1]  != '\n'){
 			printf("\n");
@@ -261,7 +261,7 @@ void runJobInForeground (job** job_list, job *j, int cont, struct termios* shell
 		}
 		
 
-		if(waitpid(j->pgid, &stat, WUNTRACED) == -1){
+		if(waitpid(-(j->pgid), &stat, WUNTRACED) == -1){
 			perror("waitpid");
 			exit(EXIT_FAILURE);
 		}

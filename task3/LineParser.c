@@ -29,11 +29,12 @@ int execute(cmdLine *pCmdLine);
 void reactToSignal(int signal);
 void setupSignals(int parent);
 void setupSignal(int sig, int dfl);
-job* handleNewJob(job** Job_list, cmdLine* cmd);
+void handleNewJob(job** Job_list, cmdLine* cmd);
+void handleNewPipedJob(job** Job_list, cmdLine* pCmdLine);
 int specialCommand(cmdLine *pCmdLine);
 int delay();
 void initialize_shell();
-void set_pgid();
+void set_pgid(pid_t pid, pid_t pgid);
 int print_tmodes(struct termios *tmodes);
 
 int debug = 0;
@@ -43,80 +44,51 @@ pid_t shell_pgid;
 
 
 
+int main(int argc, char** argv){
+
+  initialize_shell();
+
+  debugger(argc, argv);
+
+
+  while(1){
+    
+    printCurrentPath();
+
+    char userInput[2048];
+
+    printf(" >> ");
+    fgets(userInput, 2048, stdin);
+
+    if(strcmp(userInput, "quit\n") == 0){
+      freeJobList(jobs);
+      free(initial_tmodes);
+      exit(0);
+    }
+    
+    if(userInput[0] != '\n'){
+
+      cmdLine* cmdLine = parseCmdLines(userInput);
+      // printCommandLine(cmdLine);
+      execute(cmdLine);
+    }
+  }
+
+  return 0;
+}
+
 
 int execute(cmdLine *pCmdLine){
 
-  pid_t curr_pid;
-
+  
+  int piped = (pCmdLine->next != NULL);
 
   if(!specialCommand(pCmdLine)){
 
-    job* j = handleNewJob(jobs, pCmdLine);
-    
-    curr_pid = fork();
-    j->pgid = curr_pid;
-
-    if(curr_pid == -1){
-
-      perror("fork");
-      exit(EXIT_FAILURE);
-    }
-    
-    if(curr_pid == 0){
-      
-      if(debug){
-        fprintf(stderr, "Child PID is %ld\n", (long) getpid());
-        fprintf(stderr, "Executing command: %s\n", pCmdLine->arguments[0]);
-      }
-
-      int fd;
-
-      if(pCmdLine->inputRedirect != NULL){
-        
-        close(STDIN);
-        fd = open(pCmdLine->inputRedirect, O_RDWR);
-
-        if(fd == 0){
-
-          dup(fd);
-        }
-      }
-      if(pCmdLine->outputRedirect != NULL){
-
-        close(STDOUT);
-        fd = open(pCmdLine->outputRedirect, O_RDWR);
-        if(fd == 1){
-
-          dup(fd);
-        }
-      }
-
-      set_pgid();
-      setupSignals(0);
-
-      j->pgid = getgid();
-
-      if(execvp(pCmdLine->arguments[0], pCmdLine->arguments) == -1){
-        
-        perror("execv");
-        _exit(EXIT_FAILURE);
-      }
-
-      exit(1);
-    }
-    
-
-    delay();
-
-    // if it's a blocking command' wait for the child process (0) to end before proceeding
-    if(pCmdLine->blocking){
-
-      runJobInForeground (jobs, j, 0, initial_tmodes, shell_pgid);
-    }
-    else{
-
-      runJobInBackground(j, 0);
-    }
+    if(piped)
+      handleNewPipedJob(jobs, pCmdLine);
+    else
+      handleNewJob(jobs, pCmdLine);
   }
 
   freeCmdLines(pCmdLine);
@@ -129,7 +101,7 @@ void initialize_shell(){
 
   initial_tmodes = (struct termios*) (malloc(sizeof(struct termios)));
   setupSignals(1);
-  set_pgid();
+  set_pgid(getpid(), getpid());
 
   tcsetpgrp(STDIN_FILENO, getpid());
 
@@ -143,22 +115,197 @@ void initialize_shell(){
 }
 
 
-void set_pgid(){
+void set_pgid(pid_t pid, pid_t pgid){
 
-  if(setpgid(getpid(), getpid()) == -1){
+  if(setpgid(pid, pgid) == -1){
 
     perror("setpgid");
     exit(0);
   }
 }
 
+void handleNewPipedJob(job** Job_list, cmdLine* pCmdLine){
 
-job* handleNewJob(job** Job_list, cmdLine* cmd){
+  int pipefd[2];
+  pid_t forked1;
+  pid_t forked2;
 
-  job* newJob = addJob(Job_list, cmd->arguments[0]);
+  job* j1 = addJob(Job_list, pCmdLine->arguments[0]);
+  job* j2 = addJob(Job_list, pCmdLine->next->arguments[0]);
+  j1->status = RUNNING;
+  j2->status = RUNNING;
+
+  if (pipe(pipefd) == -1)
+  {
+    perror("pipe");
+    exit(1);
+  }
+
+  forked1 = fork();
+  j1->pgid = forked1;
+  set_pgid(forked1, forked1);
+
+
+  if(forked1 == -1){
+    perror("fork1");
+    exit(1);
+  }
+
+  if (forked1 == 0){
+    
+    if(debug){
+      fprintf(stderr, "Child PID is %ld\n", (long) getpid());
+      fprintf(stderr, "Child PGID is %ld\n", (long) getpgrp());
+      fprintf(stderr, "Executing command: %s\n", pCmdLine->arguments[0]);
+    }
+
+    setupSignals(0);
+
+    close(STDOUT);
+    int fg;
+
+    fg = dup(pipefd[1]);
+
+    if (fg == -1){
+      perror("dup on fork1");
+      exit(1);
+    }
+
+    close(pipefd[1]);
+
+    if (execvp(pCmdLine->arguments[0], pCmdLine->arguments) == -1){
+      perror("execvp");
+    }
+    
+    _exit(1);
+  }
+
+  close(pipefd[1]);
+
+  forked2 = fork();
+  j2->pgid = forked1;
+  set_pgid(forked2, forked1);
+
+
+  if(forked2 == -1){
+    perror("fork2");
+    exit(1);
+  }
+
+  if(forked2 == 0){
+    
+    if(debug){
+      fprintf(stderr, "Child PID is %ld\n", (long) getpid());
+      fprintf(stderr, "Child PGID is %ld\n", (long) getpgrp());
+      fprintf(stderr, "Executing command: %s\n", pCmdLine->next->arguments[0]);
+    }
+
+    setupSignals(0);
+    
+    close(STDIN);
+    int fg;
+
+    fg = dup(pipefd[0]);
+
+    if (fg == -1){
+      perror("dup on fork1");
+      exit(1);
+    }
+
+    close(pipefd[0]);
+
+    sleep(1);
+
+    if (execvp(pCmdLine->next->arguments[0], pCmdLine->next->arguments) == -1){
+      perror("execvp");
+    }
+    
+    _exit(1);
+  }
+
+  close(pipefd[0]);
+
+  delay();
+
+
+  runJobInForeground (jobs, j1, 0, initial_tmodes, shell_pgid);
+  runJobInBackground(j2, 0);
+}
+
+
+void handleNewJob(job** Job_list, cmdLine* pCmdLine){
+
+  pid_t curr_pid;
+
+  job* newJob = addJob(Job_list, pCmdLine->arguments[0]);
   newJob->status = RUNNING;
 
-  return newJob;
+  curr_pid = fork();
+  newJob->pgid = curr_pid;
+  set_pgid(curr_pid, curr_pid);
+
+
+  if(curr_pid == -1){
+
+    perror("fork");
+    exit(EXIT_FAILURE);
+  }
+  
+  if(curr_pid == 0){
+    
+    if(debug){
+      fprintf(stderr, "Child PID is %ld\n", (long) getpid());
+      fprintf(stderr, "Executing command: %s\n", pCmdLine->arguments[0]);
+    }
+
+    int fd;
+
+    if(pCmdLine->inputRedirect != NULL){
+      
+      close(STDIN);
+      fd = open(pCmdLine->inputRedirect, O_RDWR);
+
+      if(fd == 0){
+
+        dup(fd);
+      }
+    }
+    if(pCmdLine->outputRedirect != NULL){
+
+      close(STDOUT);
+      fd = open(pCmdLine->outputRedirect, O_RDWR);
+      if(fd == 1){
+
+        dup(fd);
+      }
+    }
+
+    // set_pgid();
+    setupSignals(0);
+
+    newJob->pgid = getgid();
+
+    if(execvp(pCmdLine->arguments[0], pCmdLine->arguments) == -1){
+      
+      perror("execv");
+      _exit(EXIT_FAILURE);
+    }
+
+    exit(1);
+  }
+  
+
+  delay();
+
+  // if it's a blocking command' wait for the child process (0) to end before proceeding
+  if(pCmdLine->blocking){
+
+    runJobInForeground (jobs, newJob, 0, initial_tmodes, shell_pgid);
+  }
+  else{
+
+    runJobInBackground(newJob, 0);
+  }
 }
 
 
