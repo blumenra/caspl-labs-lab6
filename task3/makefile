@@ -1,11 +1,11 @@
 
 all: main
 
-main: JobControl.o  main.o
-	gcc -g  -Wall JobControl.o  main.o  -o main
+main: JobControl.o  LineParser.o
+	gcc -g  -Wall JobControl.o  LineParser.o  -o main
 
-main.o: main.c  LineParser.h
-	gcc -g  -Wall -c main.c -o main.o
+LineParser.o: LineParser.c  LineParser.h
+	gcc -g  -Wall -c LineParser.c -o LineParser.o
 
 JobControl.o: JobControl.c  JobControl.h
 	gcc -g  -Wall -c JobControl.c -o JobControl.o
