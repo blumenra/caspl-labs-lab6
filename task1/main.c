@@ -27,6 +27,7 @@ int main(int argc, char** argv){
     if(userInput[0] != '\n'){
 
       cmdLine* cmdLine = parseCmdLines(userInput);
+      // printCommandLine(cmdLine);
       execute(cmdLine);
     }
   }

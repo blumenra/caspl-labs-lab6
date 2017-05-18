@@ -10,6 +10,11 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <time.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+#define STDIN 0
+#define STDOUT 1
 
 #ifndef NULL
     #define NULL 0
@@ -99,7 +104,29 @@ int execute(cmdLine *pCmdLine){
         fprintf(stderr, "Child PID is %ld\n", (long) getpid());
         fprintf(stderr, "Executing command: %s\n", pCmdLine->arguments[0]);
       }
-      
+
+      int fd;
+
+      if(pCmdLine->inputRedirect != NULL){
+        
+        close(STDIN);
+        fd = open(pCmdLine->inputRedirect, O_RDWR);
+
+        if(fd == 0){
+
+          dup(fd);
+        }
+      }
+      if(pCmdLine->outputRedirect != NULL){
+
+        close(STDOUT);
+        fd = open(pCmdLine->outputRedirect, O_RDWR);
+        if(fd == 1){
+
+          dup(fd);
+        }
+      }
+
       set_pgid();
       setupSignals(0);
 
