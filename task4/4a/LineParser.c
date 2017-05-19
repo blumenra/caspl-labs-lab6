@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include "LineParser.h"
 #include "JobControl.h"
+#include "variable.h"
 #include <linux/limits.h>
 #include <unistd.h>
 #include <signal.h>
@@ -36,9 +37,15 @@ int delay();
 void initialize_shell();
 void set_pgid(pid_t pid, pid_t pgid);
 int print_tmodes(struct termios *tmodes);
+void assignEnvVars(cmdLine* pCmdLine);
+
+
+
+
 
 int debug = 0;
 job* jobs[] = {0};
+variable* vars[] = {0};
 struct termios *initial_tmodes = NULL;
 pid_t shell_pgid;
 
@@ -62,6 +69,7 @@ int main(int argc, char** argv){
 
     if(strcmp(userInput, "quit\n") == 0){
       freeJobList(jobs);
+      freeVariableSet(vars);
       free(initial_tmodes);
       exit(0);
     }
@@ -80,7 +88,8 @@ int main(int argc, char** argv){
 
 int execute(cmdLine *pCmdLine){
 
-  
+  assignEnvVars(pCmdLine);
+
   int piped = (pCmdLine->next != NULL);
 
   if(!specialCommand(pCmdLine)){
@@ -96,6 +105,39 @@ int execute(cmdLine *pCmdLine){
   return 0;
 }
 
+
+void assignEnvVars(cmdLine* pCmdLine){
+
+  cmdLine* tmpCmd = pCmdLine;
+
+  while(tmpCmd != NULL){
+
+    int i;
+    for(i=1; i < tmpCmd->argCount; i++){
+
+      char* arg = tmpCmd->arguments[i];
+      char firstChar = arg[0];
+      if(firstChar == '$'){
+
+        char varName[MAX_ARGUMENTS];
+        strcpy(varName, arg+1);
+        char* ret = findVar(vars, varName);
+
+        if(ret != NULL){
+          
+          replaceCmdArg(tmpCmd, i, ret);
+
+          free(ret);
+        }
+        else{
+          fprintf(stderr, "The variable %s was not defined\n", arg+1);
+        }
+      }
+    }
+
+    tmpCmd = tmpCmd->next;
+  }
+}
 
 void initialize_shell(){
 
@@ -126,12 +168,34 @@ void set_pgid(pid_t pid, pid_t pgid){
 
 void handleNewPipedJob(job** Job_list, cmdLine* pCmdLine){
 
+  cmdLine* tmpCmd;
+
+  char fullCmd[MAX_ARGUMENTS];
+  tmpCmd = pCmdLine;
+  strcpy(fullCmd, tmpCmd->arguments[0]);
+  int i;
+  for(i=1; i < tmpCmd->argCount; i++){
+    strcat(fullCmd, " ");
+    strcat(fullCmd, tmpCmd->arguments[i]);
+  }
+
   int pipefd[2];
   pid_t forked1;
   pid_t forked2;
 
-  job* j1 = addJob(Job_list, pCmdLine->arguments[0]);
-  job* j2 = addJob(Job_list, pCmdLine->next->arguments[0]);
+  job* j1 = addJob(Job_list, fullCmd);
+
+
+  char fullCmd2[MAX_ARGUMENTS];
+  tmpCmd = pCmdLine->next;
+  strcpy(fullCmd2, tmpCmd->arguments[0]);
+  for(i=1; i < tmpCmd->argCount; i++){
+    strcat(fullCmd2, " ");
+    strcat(fullCmd2, tmpCmd->arguments[i]);
+  }
+
+
+  job* j2 = addJob(Job_list, fullCmd2);
   j1->status = RUNNING;
   j2->status = RUNNING;
 
@@ -235,10 +299,21 @@ void handleNewPipedJob(job** Job_list, cmdLine* pCmdLine){
 
 void handleNewJob(job** Job_list, cmdLine* pCmdLine){
 
+  char fullCmd[MAX_ARGUMENTS];
+  strcpy(fullCmd, pCmdLine->arguments[0]);
+  int i;
+  for(i=1; i < pCmdLine->argCount; i++){
+    strcat(fullCmd, " ");
+    strcat(fullCmd, pCmdLine->arguments[i]);
+  }
+
   pid_t curr_pid;
 
-  job* newJob = addJob(Job_list, pCmdLine->arguments[0]);
+
+  job* newJob = addJob(Job_list, fullCmd);
   newJob->status = RUNNING;
+
+  // myPrintJob(newJob, 1);
 
   curr_pid = fork();
   newJob->pgid = curr_pid;
@@ -327,6 +402,9 @@ int specialCommand(cmdLine *pCmdLine){
   if(strcmp(command, "cd") == 0){
 
     special = 1;
+    if(strcmp(pCmdLine->arguments[1], "~") == 0){
+      replaceCmdArg(pCmdLine, 1, "/");
+    }
     
     if(chdir(pCmdLine->arguments[1]) == -1){
       
@@ -372,6 +450,40 @@ int specialCommand(cmdLine *pCmdLine){
     
     special = 1;
   }
+  else if(strcmp(command, "set") == 0){
+    if(pCmdLine->argCount != 3){
+      
+      fprintf(stderr, "Invalid amount of arguments for set. Please enter 'set <arg1> <arg2>'.\n");
+    }
+    else{
+      addVariable(vars, pCmdLine->arguments[1], pCmdLine->arguments[2]);
+    }
+    
+    special = 1;
+  }
+  else if(strcmp(command, "env") == 0){
+    printVars(vars);
+
+    special = 1;
+  }
+  else if(strcmp(command, "delete") == 0){
+    if(pCmdLine->argCount != 2){
+      
+      fprintf(stderr, "Invalid amount of arguments for delete. Please enter 'delete <env_variable>'.\n");
+    }
+    else{
+      if(removeVar(vars, pCmdLine->arguments[1])){
+        printf("%s was deleted.\n", pCmdLine->arguments[1]);
+      }
+      else{
+        
+        fprintf(stderr, "The variable %s is not defined.\n", pCmdLine->arguments[1]);
+      }
+    }
+    
+    special = 1;
+  }
+
 
   return special;
 }
@@ -609,56 +721,56 @@ static cmdLine *parseSingleCmdLine(const char *strLine)
 
 static cmdLine* _parseCmdLines(char *line)
 {
-	char *nextStrCmd;
-	cmdLine *pCmdLine;
-	char pipeDelimiter = '|';
-	
-	if (isEmpty(line))
-	  return NULL;
-	
-	nextStrCmd = strchr(line , pipeDelimiter);
-	if (nextStrCmd)
-	  *nextStrCmd = 0;
-	
-	pCmdLine = parseSingleCmdLine(line);
-	if (!pCmdLine)
-	  return NULL;
-	
-	if (nextStrCmd)
-	  pCmdLine->next = _parseCmdLines(nextStrCmd+1);
+  char *nextStrCmd;
+  cmdLine *pCmdLine;
+  char pipeDelimiter = '|';
+  
+  if (isEmpty(line))
+    return NULL;
+  
+  nextStrCmd = strchr(line , pipeDelimiter);
+  if (nextStrCmd)
+    *nextStrCmd = 0;
+  
+  pCmdLine = parseSingleCmdLine(line);
+  if (!pCmdLine)
+    return NULL;
+  
+  if (nextStrCmd)
+    pCmdLine->next = _parseCmdLines(nextStrCmd+1);
 
-	return pCmdLine;
+  return pCmdLine;
 }
 
 cmdLine *parseCmdLines(const char *strLine)
 {
-	char* line, *ampersand;
-	cmdLine *head, *last;
-	int idx = 0;
-	
-	if (isEmpty(strLine))
-	  return NULL;
-	
-	line = strClone(strLine);
-	if (line[strlen(line)-1] == '\n')
-	  line[strlen(line)-1] = 0;
-	
-	ampersand = strchr( line,  '&');
-	if (ampersand)
-	  *(ampersand) = 0;
-		
-	if ( (last = head = _parseCmdLines(line)) )
-	{	
-	  while (last->next)
-	    last = last->next;
-	  last->blocking = ampersand? 0:1;
-	}
-	
-	for (last = head; last; last = last->next)
-		last->idx = idx++;
-			
-	FREE(line);
-	return head;
+  char* line, *ampersand;
+  cmdLine *head, *last;
+  int idx = 0;
+  
+  if (isEmpty(strLine))
+    return NULL;
+  
+  line = strClone(strLine);
+  if (line[strlen(line)-1] == '\n')
+    line[strlen(line)-1] = 0;
+  
+  ampersand = strchr( line,  '&');
+  if (ampersand)
+    *(ampersand) = 0;
+    
+  if ( (last = head = _parseCmdLines(line)) )
+  { 
+    while (last->next)
+      last = last->next;
+    last->blocking = ampersand? 0:1;
+  }
+  
+  for (last = head; last; last = last->next)
+    last->idx = idx++;
+      
+  FREE(line);
+  return head;
 }
 
 
@@ -674,7 +786,7 @@ void freeCmdLines(cmdLine *pCmdLine)
       FREE(pCmdLine->arguments[i]);
 
   if (pCmdLine->next)
-	  freeCmdLines(pCmdLine->next);
+    freeCmdLines(pCmdLine->next);
 
   FREE(pCmdLine);
 }
