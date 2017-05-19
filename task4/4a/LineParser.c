@@ -77,7 +77,6 @@ int main(int argc, char** argv){
     if(userInput[0] != '\n'){
 
       cmdLine* cmdLine = parseCmdLines(userInput);
-      // printCommandLine(cmdLine);
       execute(cmdLine);
     }
   }
@@ -223,6 +222,28 @@ void handleNewPipedJob(job** Job_list, cmdLine* pCmdLine){
       fprintf(stderr, "Executing command: %s\n", pCmdLine->arguments[0]);
     }
 
+    int fd;
+
+    if(pCmdLine->inputRedirect != NULL){
+      
+      close(STDIN);
+      fd = open(pCmdLine->inputRedirect, O_RDWR);
+
+      if(fd == 0){
+
+        dup(fd);
+      }
+    }
+    if(pCmdLine->outputRedirect != NULL){
+
+      close(STDOUT);
+      fd = open(pCmdLine->outputRedirect, O_RDWR);
+      if(fd == 1){
+
+        dup(fd);
+      }
+    }
+
     setupSignals(0);
 
     close(STDOUT);
@@ -264,6 +285,30 @@ void handleNewPipedJob(job** Job_list, cmdLine* pCmdLine){
       fprintf(stderr, "Executing command: %s\n", pCmdLine->next->arguments[0]);
     }
 
+    int fd;
+
+    printCommandLine(pCmdLine->next);
+    
+    if(pCmdLine->next->inputRedirect != NULL){
+      
+
+      close(STDIN);
+      fd = open(pCmdLine->next->inputRedirect, O_RDWR);
+
+      if(fd == 0){
+
+        dup(fd);
+      }
+    }
+    if(pCmdLine->next->outputRedirect != NULL){
+
+      close(STDOUT);
+      fd = open(pCmdLine->next->outputRedirect, O_RDWR);
+      if(fd == 1){
+        dup(fd);
+      }
+    }
+
     setupSignals(0);
     
     close(STDIN);
@@ -291,7 +336,6 @@ void handleNewPipedJob(job** Job_list, cmdLine* pCmdLine){
 
   delay();
 
-
   runJobInForeground (jobs, j1, 0, initial_tmodes, shell_pgid);
   runJobInBackground(j2, 0);
 }
@@ -312,8 +356,6 @@ void handleNewJob(job** Job_list, cmdLine* pCmdLine){
 
   job* newJob = addJob(Job_list, fullCmd);
   newJob->status = RUNNING;
-
-  // myPrintJob(newJob, 1);
 
   curr_pid = fork();
   newJob->pgid = curr_pid;
@@ -355,7 +397,6 @@ void handleNewJob(job** Job_list, cmdLine* pCmdLine){
       }
     }
 
-    // set_pgid();
     setupSignals(0);
 
     newJob->pgid = getgid();
