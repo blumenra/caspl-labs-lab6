@@ -287,8 +287,6 @@ void handleNewPipedJob(job** Job_list, cmdLine* pCmdLine){
 
     int fd;
 
-    printCommandLine(pCmdLine->next);
-    
     if(pCmdLine->next->inputRedirect != NULL){
       
 
