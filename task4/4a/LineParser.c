@@ -335,8 +335,26 @@ void handleNewPipedJob(job** Job_list, cmdLine* pCmdLine){
 
   delay();
 
-  runJobInForeground (jobs, j1, 0, initial_tmodes, shell_pgid);
-  runJobInBackground(j2, 0);
+
+  if(!pCmdLine->blocking){
+
+    runJobInForeground (jobs, j1, 0, initial_tmodes, shell_pgid);
+  }
+  else{
+
+    runJobInBackground(j1, 0);
+  }
+
+  if(pCmdLine->next->blocking){
+
+    runJobInForeground (jobs, j2, 0, initial_tmodes, shell_pgid);
+  }
+  else{
+
+    runJobInBackground(j2, 0);
+  }
+
+
 }
 
 

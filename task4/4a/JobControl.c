@@ -237,7 +237,6 @@ void runJobInForeground (job** job_list, job *j, int cont, struct termios* shell
 	ret = waitpid(-(j->pgid), &stat, WNOHANG);
 
 	if(ret == -1){
-		puts("1");
 		printf("[%d]\t %s \t\t %s", j->idx, "Done",j -> cmd); 
 
 		if (j -> cmd[strlen(j -> cmd)-1]  != '\n'){
@@ -261,18 +260,26 @@ void runJobInForeground (job** job_list, job *j, int cont, struct termios* shell
 		}
 		
 
-		if(waitpid(-(j->pgid), &stat, WUNTRACED) == -1){
-			perror("waitpid");
-			exit(EXIT_FAILURE);
-		}
+		job* tmp = *job_list;
 
-		if(WIFSTOPPED(stat)){
-			
-			j->status = SUSPENDED;
-		}
-		else{
+		while(tmp != NULL){
 
-			j->status = DONE;
+
+			if(waitpid(-tmp->pgid, &stat, WUNTRACED) == -1){
+				perror("waitpid");
+				exit(EXIT_FAILURE);
+			}
+
+			if(WIFSTOPPED(stat)){
+				
+				j->status = SUSPENDED;
+			}
+			else{
+
+				j->status = DONE;
+			}
+
+			tmp = tmp->next;
 		}
 
 
