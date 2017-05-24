@@ -301,11 +301,13 @@ void handleNewPipedJob(job** Job_list, cmdLine* pCmdLine){
     }
     if(pCmdLine->next->outputRedirect != NULL){
 
+      fd = open(pCmdLine->outputRedirect, O_RDWR | O_APPEND | O_CREAT, 0777);
       close(STDOUT);
-      fd = open(pCmdLine->next->outputRedirect, O_RDWR);
-      if(fd == 1){
+      // if(fd == 1){
+
         dup(fd);
-      }
+        close(fd);
+      // }
     }
 
     setupSignals(0);
@@ -461,11 +463,24 @@ int specialCommand(cmdLine *pCmdLine){
   if(strcmp(command, "cd") == 0){
 
     special = 1;
-    if(strcmp(pCmdLine->arguments[1], "~") == 0){
-      replaceCmdArg(pCmdLine, 1, "/");
+    // char* dir = pCmdLine->arguments[1];
+    char* dir = NULL;
+
+    if(pCmdLine->argCount < 2){
+      dir = "";
+    }
+    else{
+
+      if(strcmp(pCmdLine->arguments[1], "~") == 0){
+        dir = getenv("HOME");
+      }
+      else{
+
+        dir = pCmdLine->arguments[1];
+      }
     }
     
-    if(chdir(pCmdLine->arguments[1]) == -1){
+    if(chdir(dir) == -1){
       
       perror("cd");
     }
