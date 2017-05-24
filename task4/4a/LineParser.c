@@ -112,7 +112,7 @@ void assignEnvVars(cmdLine* pCmdLine){
   while(tmpCmd != NULL){
 
     int i;
-    for(i=1; i < tmpCmd->argCount; i++){
+    for(i=0; i < tmpCmd->argCount; i++){
 
       char* arg = tmpCmd->arguments[i];
       char firstChar = arg[0];
