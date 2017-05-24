@@ -236,12 +236,13 @@ void handleNewPipedJob(job** Job_list, cmdLine* pCmdLine){
     }
     if(pCmdLine->outputRedirect != NULL){
 
+      fd = open(pCmdLine->outputRedirect, O_RDWR | O_APPEND | O_CREAT, 0777);
       close(STDOUT);
-      fd = open(pCmdLine->outputRedirect, O_RDWR);
-      if(fd == 1){
+      // if(fd == 1){
 
         dup(fd);
-      }
+        close(fd);
+      // }
     }
 
     setupSignals(0);
@@ -387,12 +388,13 @@ void handleNewJob(job** Job_list, cmdLine* pCmdLine){
     }
     if(pCmdLine->outputRedirect != NULL){
 
+      fd = open(pCmdLine->outputRedirect, O_RDWR | O_APPEND | O_CREAT, 0777);
       close(STDOUT);
-      fd = open(pCmdLine->outputRedirect, O_RDWR);
-      if(fd == 1){
+      // if(fd == 1){
 
         dup(fd);
-      }
+        close(fd);
+      // }
     }
 
     setupSignals(0);
