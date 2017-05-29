@@ -419,7 +419,7 @@ void handleNewJob(job** Job_list, cmdLine* pCmdLine){
 
     setupSignals(0);
 
-    newJob->pgid = getgid();
+    // newJob->pgid = getgid();
 
     if(execvp(pCmdLine->arguments[0], pCmdLine->arguments) == -1){
       

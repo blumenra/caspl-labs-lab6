@@ -233,66 +233,71 @@ void runJobInForeground (job** job_list, job *j, int cont, struct termios* shell
 	pid_t ret;
 	int stat;
 
+	ret = waitpid(j->pgid, &stat, WNOHANG);
+	
+	if(j != NULL){
+		if(ret == -1){
+			printf("[%d]\t %s \t\t %s", j->idx, "Done",j -> cmd); 
 
-	ret = waitpid(-(j->pgid), &stat, WNOHANG);
-
-	if(ret == -1){
-		printf("[%d]\t %s \t\t %s", j->idx, "Done",j -> cmd); 
-
-		if (j -> cmd[strlen(j -> cmd)-1]  != '\n'){
-			printf("\n");
-		}
-		removeJob(job_list, j);;
-	}
-	else if(ret == 0){
-
-		tcsetpgrp(STDIN_FILENO, j->pgid);
-
-		if((cont == 1) && (j->status == SUSPENDED)){
-
-			tcsetattr(STDIN_FILENO, TCSADRAIN, j->tmodes);
-			
-			if(kill(j->pgid, SIGCONT) == -1){
-
-				perror("kill");
-				exit(0); // NOT sure if necessary..
+			if (j -> cmd[strlen(j -> cmd)-1]  != '\n'){
+				printf("\n");
 			}
+			removeJob(job_list, j);;
 		}
-		
+		else if(ret == 0){
 
-		job* tmp = *job_list;
+			tcsetpgrp(STDIN_FILENO, j->pgid);
 
-		while(tmp != NULL){
+			if((cont == 1) && (j->status == SUSPENDED)){
 
-
-			if(waitpid(-tmp->pgid, &stat, WUNTRACED) == -1){
-				perror("waitpid");
-				exit(EXIT_FAILURE);
-			}
-
-			if(WIFSTOPPED(stat)){
+				tcsetattr(STDIN_FILENO, TCSADRAIN, j->tmodes);
 				
-				j->status = SUSPENDED;
-			}
-			else{
+				if(kill(j->pgid, SIGCONT) == -1){
 
-				j->status = DONE;
+					perror("kill");
+					exit(0); // NOT sure if necessary..
+				}
+			}
+			
+
+			job* tmp = *job_list;
+
+			while(tmp != NULL){
+				// puts("5");
+				if(tmp->pgid == j->pgid){
+
+					if(waitpid(-j->pgid, &stat, WUNTRACED) == -1){
+						perror("waitpid");
+						exit(EXIT_FAILURE);
+					}
+
+					// puts("6");
+					if(WIFSTOPPED(stat)){
+						
+						j->status = SUSPENDED;
+					}
+					else{
+
+						j->status = DONE;
+					}
+				}
+
+
+				tmp = tmp->next;
 			}
 
-			tmp = tmp->next;
+
+			tcsetpgrp(STDIN_FILENO, shell_pgid);
+			tcgetattr(STDIN_FILENO, j->tmodes);
+			tcsetattr(STDIN_FILENO, TCSADRAIN, shell_tmodes);
 		}
-
-
-		tcsetpgrp(STDIN_FILENO, shell_pgid);
-		tcgetattr(STDIN_FILENO, j->tmodes);
-		tcsetattr(STDIN_FILENO, TCSADRAIN, shell_tmodes);
+		else{
+			
+			j->status = DONE;	
+		}
 	}
-	else{
-		
-		j->status = DONE;	
-	}
-
 	updateJobList(job_list, TRUE);
+
 }
 
 /** 
